@@ -65,6 +65,7 @@ import {
 } from "@plannotator/server/annotate";
 import { type DiffType, getVcsContext, runVcsDiff, gitRuntime } from "@plannotator/server/vcs";
 import { loadConfig, resolveDefaultDiffType, resolveUseJina } from "@plannotator/shared/config";
+import { stripAtPrefix } from "@plannotator/shared/at-reference";
 import { htmlToMarkdown } from "@plannotator/shared/html-to-markdown";
 import { urlToMarkdown } from "@plannotator/shared/url-to-markdown";
 import { fetchRef, createWorktree, removeWorktree, ensureObjectAvailable } from "@plannotator/shared/worktree";
@@ -513,10 +514,8 @@ if (args[0] === "sessions") {
     process.exit(1);
   }
 
-  // Strip @ prefix if present (Claude Code file reference syntax)
-  if (filePath.startsWith("@")) {
-    filePath = filePath.slice(1);
-  }
+  // Strip the `@` reference marker (shared helper — same rule every harness uses)
+  filePath = stripAtPrefix(filePath);
 
   // Use PLANNOTATOR_CWD if set (original working directory before script cd'd)
   const projectRoot = process.env.PLANNOTATOR_CWD || process.cwd();

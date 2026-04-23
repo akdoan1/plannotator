@@ -50,11 +50,32 @@ describe("parseAnnotateArgs", () => {
     });
   });
 
-  test("leading @ is stripped", () => {
+  // `@` is the reference-mode marker (Claude Code / OpenCode / Pi convention),
+  // not part of the filename. The parser strips it as the primary behavior —
+  // that's the common case. Scoped-package-style literal `@` paths are handled
+  // by a fallback deeper in the resolution stack (see at-reference.ts).
+
+  test("leading @ is stripped (reference-mode primary)", () => {
     expect(parseAnnotateArgs("@spec.md --gate")).toEqual({
       filePath: "spec.md",
       gate: true,
       json: false,
+    });
+  });
+
+  test("scoped-package-style path has @ stripped (falls back to literal elsewhere)", () => {
+    expect(parseAnnotateArgs("@plannotator/ui/README.md")).toEqual({
+      filePath: "plannotator/ui/README.md",
+      gate: false,
+      json: false,
+    });
+  });
+
+  test("@ stripped when combined with --gate --json", () => {
+    expect(parseAnnotateArgs("@docs/spec.md --gate --json")).toEqual({
+      filePath: "docs/spec.md",
+      gate: true,
+      json: true,
     });
   });
 

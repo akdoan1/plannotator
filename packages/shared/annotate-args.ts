@@ -2,8 +2,10 @@
  * Parse CLI-style args arriving as a single whitespace-delimited string.
  *
  * Extracts the `--gate` and `--json` flags (issue #570) from the remainder,
- * which is treated as the target path. Leading `@` is stripped to match the
- * Claude Code path-arg convention used in apps/hook/server/index.ts.
+ * which is treated as the target path. Leading `@` is stripped via the
+ * shared at-reference helper — reference-mode is primary. Scoped-package-
+ * style literal `@` paths are handled by a fallback that the downstream
+ * resolver opts into (see at-reference.ts).
  *
  * Used by the OpenCode plugin and Pi extension, where the whole args string
  * arrives pre-joined from the harness slash-command dispatcher. The Claude
@@ -22,6 +24,8 @@
  * that token is stripped. Supporting this would need shell-style quoting,
  * which isn't worth the complexity for a vanishingly rare naming pattern.
  */
+
+import { stripAtPrefix } from "./at-reference";
 
 export interface ParsedAnnotateArgs {
   filePath: string;
@@ -66,12 +70,13 @@ export function parseAnnotateArgs(raw: string): ParsedAnnotateArgs {
   // Trim covers the case where two adjacent flags (`... --gate --json`)
   // both claim the single whitespace between them, leaving a trailing space
   // after the kept token.
-  const filePath = segments
-    .filter((_, j) => keep[j])
-    .map((seg) => seg.text)
-    .join("")
-    .trim()
-    .replace(/^@/, "");
+  const filePath = stripAtPrefix(
+    segments
+      .filter((_, j) => keep[j])
+      .map((seg) => seg.text)
+      .join("")
+      .trim(),
+  );
 
   return { filePath, gate, json };
 }
