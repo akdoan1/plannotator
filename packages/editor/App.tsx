@@ -147,6 +147,7 @@ const App: React.FC = () => {
   const [isWSL, setIsWSL] = useState(false);
   const [globalAttachments, setGlobalAttachments] = useState<ImageAttachment[]>([]);
   const [annotateMode, setAnnotateMode] = useState(false);
+  const [gate, setGate] = useState(false);
   const [annotateSource, setAnnotateSource] = useState<'file' | 'message' | 'folder' | null>(null);
   const [sourceInfo, setSourceInfo] = useState<string | undefined>();
   const [sourceFilePath, setSourceFilePath] = useState<string | undefined>();
@@ -642,7 +643,7 @@ const App: React.FC = () => {
         if (!res.ok) throw new Error('Not in API mode');
         return res.json();
       })
-      .then((data: { plan: string; origin?: Origin; mode?: 'annotate' | 'annotate-last' | 'annotate-folder' | 'archive'; filePath?: string; sourceInfo?: string; sharingEnabled?: boolean; shareBaseUrl?: string; pasteApiUrl?: string; repoInfo?: { display: string; branch?: string; host?: string }; previousPlan?: string | null; versionInfo?: { version: number; totalVersions: number; project: string }; archivePlans?: ArchivedPlan[]; projectRoot?: string; isWSL?: boolean; serverConfig?: { displayName?: string; gitUser?: string } }) => {
+      .then((data: { plan: string; origin?: Origin; mode?: 'annotate' | 'annotate-last' | 'annotate-folder' | 'archive'; filePath?: string; sourceInfo?: string; gate?: boolean; sharingEnabled?: boolean; shareBaseUrl?: string; pasteApiUrl?: string; repoInfo?: { display: string; branch?: string; host?: string }; previousPlan?: string | null; versionInfo?: { version: number; totalVersions: number; project: string }; archivePlans?: ArchivedPlan[]; projectRoot?: string; isWSL?: boolean; serverConfig?: { displayName?: string; gitUser?: string } }) => {
         // Initialize config store with server-provided values (config file > cookie > default)
         configStore.init(data.serverConfig);
         // gitUser drives the "Use git name" button in Settings; stays undefined (button hidden) when unavailable
@@ -663,6 +664,7 @@ const App: React.FC = () => {
         setIsApiMode(true);
         if (data.mode === 'annotate' || data.mode === 'annotate-last' || data.mode === 'annotate-folder') {
           setAnnotateMode(true);
+          setGate(data.gate ?? false);
         }
         if (data.mode === 'annotate-folder') {
           sidebar.open('files');
@@ -984,6 +986,17 @@ const App: React.FC = () => {
         }),
       });
       setSubmitted('denied'); // reuse 'denied' state for "feedback sent" overlay
+    } catch {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Annotate gate-mode handler — approves the artifact without feedback (#570)
+  const handleAnnotateApprove = async () => {
+    setIsSubmitting(true);
+    try {
+      await fetch('/api/approve', { method: 'POST' });
+      setSubmitted('approved');
     } catch {
       setIsSubmitting(false);
     }
@@ -1422,7 +1435,8 @@ const App: React.FC = () => {
             {isApiMode && (!linkedDocHook.isActive || annotateMode) && !archive.archiveMode && (
               <>
                 {annotateMode ? (
-                  // Annotate mode: Close always visible, Send Annotations when annotations exist
+                  // Annotate mode: Close always visible, Send Annotations when annotations exist,
+                  // Approve only when gate (review) mode is enabled (#570).
                   <>
                     <ExitButton
                       onClick={() => (allAnnotations.length > 0 || editorAnnotations.length > 0 || linkedDocHook.docAnnotationCount > 0 || globalAttachments.length > 0) ? setShowExitWarning(true) : handleAnnotateExit()}
@@ -1436,6 +1450,14 @@ const App: React.FC = () => {
                         isLoading={isSubmitting}
                         label="Send Annotations"
                         title="Send Annotations"
+                      />
+                    )}
+                    {gate && (
+                      <ApproveButton
+                        onClick={handleAnnotateApprove}
+                        disabled={isSubmitting || isExiting}
+                        isLoading={isSubmitting}
+                        title="Approve — no changes requested"
                       />
                     )}
                   </>
@@ -1944,8 +1966,9 @@ const App: React.FC = () => {
           title={
             archive.archiveMode ? 'Archive Closed'
             : submitted === 'exited' ? 'Session Closed'
-            : submitted === 'approved' ? 'Plan Approved'
-            : annotateMode ? 'Annotations Sent'
+            : submitted === 'approved'
+              ? (annotateMode ? 'Approved' : 'Plan Approved')
+              : annotateMode ? 'Annotations Sent'
             : 'Feedback Sent'
           }
           subtitle={
@@ -1954,7 +1977,9 @@ const App: React.FC = () => {
               : archive.archiveMode
                 ? 'You can reopen with plannotator archive.'
                 : submitted === 'approved'
-                  ? `${agentName} will proceed with the implementation.`
+                  ? (annotateMode
+                      ? `${agentName} will proceed.`
+                      : `${agentName} will proceed with the implementation.`)
                   : annotateMode
                     ? `${agentName} will address your annotations on the ${annotateSource === 'message' ? 'message' : annotateSource === 'folder' ? 'files' : 'file'}.`
                     : `${agentName} will revise the plan based on your annotations.`
