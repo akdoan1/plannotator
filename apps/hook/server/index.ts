@@ -65,7 +65,7 @@ import {
 } from "@plannotator/server/annotate";
 import { type DiffType, getVcsContext, runVcsDiff, gitRuntime } from "@plannotator/server/vcs";
 import { loadConfig, resolveDefaultDiffType, resolveUseJina } from "@plannotator/shared/config";
-import { stripAtPrefix } from "@plannotator/shared/at-reference";
+import { stripAtPrefix, resolveAtReference } from "@plannotator/shared/at-reference";
 import { htmlToMarkdown } from "@plannotator/shared/html-to-markdown";
 import { urlToMarkdown } from "@plannotator/shared/url-to-markdown";
 import { fetchRef, createWorktree, removeWorktree, ensureObjectAvailable } from "@plannotator/shared/worktree";
@@ -508,14 +508,16 @@ if (args[0] === "sessions") {
   // ANNOTATE MODE
   // ============================================
 
-  let filePath = args[1];
-  if (!filePath) {
+  const rawFilePath = args[1];
+  if (!rawFilePath) {
     console.error("Usage: plannotator annotate <file.md | file.html | https://... | folder/>  [--no-jina]");
     process.exit(1);
   }
 
-  // Strip the `@` reference marker (shared helper — same rule every harness uses)
-  filePath = stripAtPrefix(filePath);
+  // Primary resolution strips the `@` reference marker; rawFilePath is
+  // preserved so each branch can fall back to the literal form below
+  // (scoped-package-style names).
+  let filePath = stripAtPrefix(rawFilePath);
 
   // Use PLANNOTATOR_CWD if set (original working directory before script cd'd)
   const projectRoot = process.env.PLANNOTATOR_CWD || process.cwd();
@@ -550,16 +552,14 @@ if (args[0] === "sessions") {
     absolutePath = filePath; // Use URL as the "path" for display
     sourceInfo = filePath;   // Full URL for source attribution
   } else {
-    // Check if the argument is a directory (folder annotation mode)
-    const resolvedArg = resolveUserPath(filePath, projectRoot);
-    let isFolder = false;
-    try {
-      isFolder = statSync(resolvedArg).isDirectory();
-    } catch {
-      // Not a directory, fall through to file resolution
-    }
+    // Folder check with literal-@ fallback for scoped-package-style names.
+    const folderCandidate = resolveAtReference(rawFilePath, (c) => {
+      try { return statSync(resolveUserPath(c, projectRoot)).isDirectory(); }
+      catch { return false; }
+    });
 
-    if (isFolder) {
+    if (folderCandidate !== null) {
+      const resolvedArg = resolveUserPath(folderCandidate, projectRoot);
       // Folder annotation mode (markdown + HTML files)
       if (!hasMarkdownFiles(resolvedArg, FILE_BROWSER_EXCLUDED, /\.(mdx?|html?)$/i)) {
         console.error(`No markdown or HTML files found in ${resolvedArg}`);
@@ -570,41 +570,49 @@ if (args[0] === "sessions") {
       markdown = "";
       annotateMode = "annotate-folder";
       console.error(`Folder: ${resolvedArg}`);
-    } else if (/\.html?$/i.test(resolvedArg)) {
-      // HTML file annotation mode — convert to markdown via Turndown
-      if (!existsSync(resolvedArg)) {
-        console.error(`File not found: ${filePath}`);
-        process.exit(1);
-      }
-      const htmlFile = Bun.file(resolvedArg);
-      if (htmlFile.size > 10 * 1024 * 1024) {
-        console.error(`File too large (${Math.round(htmlFile.size / 1024 / 1024)}MB, max 10MB): ${resolvedArg}`);
-        process.exit(1);
-      }
-      const html = await htmlFile.text();
-      markdown = htmlToMarkdown(html);
-      absolutePath = resolvedArg;
-      sourceInfo = path.basename(resolvedArg);
-      console.error(`Converted: ${absolutePath}`);
     } else {
-      // Single markdown file annotation mode
-      const resolved = resolveMarkdownFile(filePath, projectRoot);
+      // HTML check with the same literal-@ fallback semantics.
+      const htmlCandidate = resolveAtReference(rawFilePath, (c) => {
+        const abs = resolveUserPath(c, projectRoot);
+        return /\.html?$/i.test(abs) && existsSync(abs);
+      });
 
-      if (resolved.kind === "ambiguous") {
-        console.error(`Ambiguous filename "${resolved.input}" — found ${resolved.matches.length} matches:`);
-        for (const match of resolved.matches) {
-          console.error(`  ${match}`);
+      if (htmlCandidate !== null) {
+        const resolvedArg = resolveUserPath(htmlCandidate, projectRoot);
+        const htmlFile = Bun.file(resolvedArg);
+        if (htmlFile.size > 10 * 1024 * 1024) {
+          console.error(`File too large (${Math.round(htmlFile.size / 1024 / 1024)}MB, max 10MB): ${resolvedArg}`);
+          process.exit(1);
         }
-        process.exit(1);
-      }
-      if (resolved.kind === "not_found") {
-        console.error(`File not found: ${resolved.input}`);
-        process.exit(1);
-      }
+        const html = await htmlFile.text();
+        markdown = htmlToMarkdown(html);
+        absolutePath = resolvedArg;
+        sourceInfo = path.basename(resolvedArg);
+        console.error(`Converted: ${absolutePath}`);
+      } else {
+        // Single markdown file annotation mode
+        // Strip-first with literal-@ fallback (scoped-package-style names).
+        let resolved = resolveMarkdownFile(filePath, projectRoot);
+        if (resolved.kind === "not_found" && rawFilePath !== filePath) {
+          resolved = resolveMarkdownFile(rawFilePath, projectRoot);
+        }
 
-      absolutePath = resolved.path;
-      markdown = await Bun.file(absolutePath).text();
-      console.error(`Resolved: ${absolutePath}`);
+        if (resolved.kind === "ambiguous") {
+          console.error(`Ambiguous filename "${resolved.input}" — found ${resolved.matches.length} matches:`);
+          for (const match of resolved.matches) {
+            console.error(`  ${match}`);
+          }
+          process.exit(1);
+        }
+        if (resolved.kind === "not_found") {
+          console.error(`File not found: ${resolved.input}`);
+          process.exit(1);
+        }
+
+        absolutePath = resolved.path;
+        markdown = await Bun.file(absolutePath).text();
+        console.error(`Resolved: ${absolutePath}`);
+      }
     }
   }
 

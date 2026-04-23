@@ -24,8 +24,9 @@ import { loadConfig, resolveDefaultDiffType, resolveUseJina } from "@plannotator
 import { resolveMarkdownFile, resolveUserPath } from "@plannotator/shared/resolve-file";
 import { htmlToMarkdown } from "@plannotator/shared/html-to-markdown";
 import { parseAnnotateArgs } from "@plannotator/shared/annotate-args";
+import { resolveAtReference } from "@plannotator/shared/at-reference";
 import { urlToMarkdown } from "@plannotator/shared/url-to-markdown";
-import { statSync } from "fs";
+import { existsSync, statSync } from "fs";
 import path from "path";
 
 /** Shared dependencies injected by the plugin */
@@ -155,7 +156,9 @@ export async function handleAnnotateCommand(
   const rawArgs = event.properties?.arguments || event.arguments || "";
   // #570: split --gate / --json out of the args; rest is the file path.
   // --json is accepted silently (OpenCode writes to session, not stdout).
-  const { filePath, gate } = parseAnnotateArgs(rawArgs);
+  // `rawFilePath` preserves any leading `@` for the scoped-package fallback
+  // (e.g. `@plannotator/ui/README.md`). Primary resolution uses stripped.
+  const { filePath, rawFilePath, gate } = parseAnnotateArgs(rawArgs);
 
   if (!filePath) {
     client.app.log({ level: "error", message: "Usage: /plannotator-annotate <file.md | file.html | https://...> [--gate] [--json]" });
@@ -183,10 +186,17 @@ export async function handleAnnotateCommand(
     sourceInfo = filePath;
   } else {
     const projectRoot = process.cwd();
-    const resolvedArg = resolveUserPath(filePath, projectRoot);
 
-    if (/\.html?$/i.test(resolvedArg)) {
-      // HTML file annotation — convert to markdown via Turndown
+    // Pick the interpretation of the user input that actually resolves to
+    // an extant HTML file: stripped form first (reference-mode), literal as
+    // fallback for scoped-package-style names. Null if neither works.
+    const htmlCandidate = resolveAtReference(rawFilePath, (c) => {
+      const abs = resolveUserPath(c, projectRoot);
+      return /\.html?$/i.test(abs) && existsSync(abs);
+    });
+
+    if (htmlCandidate !== null) {
+      const resolvedArg = resolveUserPath(htmlCandidate, projectRoot);
       let fileSize: number;
       try {
         fileSize = statSync(resolvedArg).size;
@@ -206,7 +216,11 @@ export async function handleAnnotateCommand(
     } else {
       // Markdown file annotation
       client.app.log({ level: "info", message: `Opening annotation UI for ${filePath}...` });
-      const resolved = await resolveMarkdownFile(filePath, projectRoot);
+      // Strip-first with literal-@ fallback (scoped-package-style names).
+      let resolved = await resolveMarkdownFile(filePath, projectRoot);
+      if (resolved.kind === "not_found" && rawFilePath !== filePath) {
+        resolved = await resolveMarkdownFile(rawFilePath, projectRoot);
+      }
 
       if (resolved.kind === "ambiguous") {
         client.app.log({

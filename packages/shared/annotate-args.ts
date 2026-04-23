@@ -28,7 +28,17 @@
 import { stripAtPrefix } from "./at-reference";
 
 export interface ParsedAnnotateArgs {
+  /**
+   * Primary resolution path with any leading `@` stripped (reference-mode
+   * convention). Most call sites should use this directly.
+   */
   filePath: string;
+  /**
+   * Raw path with the `@` prefix preserved (if the user supplied one).
+   * Callers that want the literal-`@` fallback for scoped-package-style
+   * paths pair this with `resolveAtReference` from at-reference.ts.
+   */
+  rawFilePath: string;
   gate: boolean;
   json: boolean;
 }
@@ -70,13 +80,11 @@ export function parseAnnotateArgs(raw: string): ParsedAnnotateArgs {
   // Trim covers the case where two adjacent flags (`... --gate --json`)
   // both claim the single whitespace between them, leaving a trailing space
   // after the kept token.
-  const filePath = stripAtPrefix(
-    segments
-      .filter((_, j) => keep[j])
-      .map((seg) => seg.text)
-      .join("")
-      .trim(),
-  );
+  const rawFilePath = segments
+    .filter((_, j) => keep[j])
+    .map((seg) => seg.text)
+    .join("")
+    .trim();
 
-  return { filePath, gate, json };
+  return { filePath: stripAtPrefix(rawFilePath), rawFilePath, gate, json };
 }

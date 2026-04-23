@@ -38,6 +38,7 @@ import { htmlToMarkdown } from "./generated/html-to-markdown.js";
 import { urlToMarkdown } from "./generated/url-to-markdown.js";
 import { loadConfig, resolveUseJina } from "./generated/config.js";
 import { parseAnnotateArgs } from "./generated/annotate-args.js";
+import { resolveAtReference } from "./generated/at-reference.js";
 import {
 	getLastAssistantMessageText,
 	hasPlanBrowserHtml,
@@ -340,7 +341,9 @@ export default function plannotator(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			// #570: split --gate / --json from the path. --json is silently
 			// accepted (Pi writes back via sendUserMessage, not stdout).
-			const { filePath, gate } = parseAnnotateArgs(args ?? "");
+			// `rawFilePath` keeps any leading `@` for the literal-@ fallback
+			// (scoped-package-style names).
+			const { filePath, rawFilePath, gate } = parseAnnotateArgs(args ?? "");
 			if (!filePath) {
 				ctx.ui.notify("Usage: /plannotator-annotate <file.md | file.html | https://... | folder/> [--gate] [--json]", "error");
 				return;
@@ -376,11 +379,20 @@ export default function plannotator(pi: ExtensionAPI): void {
 				absolutePath = filePath;
 				sourceInfo = filePath;
 			} else {
-				absolutePath = resolveUserPath(filePath, ctx.cwd);
-				if (!existsSync(absolutePath)) {
+				// Pick the interpretation of the user input that actually exists:
+				// stripped form first (reference-mode primary), literal as fallback
+				// for scoped-package-style names. Falls back to the stripped form
+				// for the error message if neither exists.
+				const resolvedCandidate = resolveAtReference(rawFilePath, (c) => {
+					const abs = resolveUserPath(c, ctx.cwd);
+					return existsSync(abs);
+				});
+				if (resolvedCandidate === null) {
+					absolutePath = resolveUserPath(filePath, ctx.cwd);
 					ctx.ui.notify(`File not found: ${absolutePath}`, "error");
 					return;
 				}
+				absolutePath = resolveUserPath(resolvedCandidate, ctx.cwd);
 
 				try {
 					isFolder = statSync(absolutePath).isDirectory();

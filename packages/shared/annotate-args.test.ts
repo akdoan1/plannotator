@@ -5,6 +5,7 @@ describe("parseAnnotateArgs", () => {
   test("path only", () => {
     expect(parseAnnotateArgs("spec.md")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "spec.md",
       gate: false,
       json: false,
     });
@@ -13,6 +14,7 @@ describe("parseAnnotateArgs", () => {
   test("path with --gate at end", () => {
     expect(parseAnnotateArgs("spec.md --gate")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "spec.md",
       gate: true,
       json: false,
     });
@@ -21,6 +23,7 @@ describe("parseAnnotateArgs", () => {
   test("--gate before path", () => {
     expect(parseAnnotateArgs("--gate spec.md")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "spec.md",
       gate: true,
       json: false,
     });
@@ -29,6 +32,7 @@ describe("parseAnnotateArgs", () => {
   test("path with both flags", () => {
     expect(parseAnnotateArgs("spec.md --gate --json")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "spec.md",
       gate: true,
       json: true,
     });
@@ -37,6 +41,7 @@ describe("parseAnnotateArgs", () => {
   test("flags only, no path", () => {
     expect(parseAnnotateArgs("--gate --json")).toEqual({
       filePath: "",
+      rawFilePath: "",
       gate: true,
       json: true,
     });
@@ -45,35 +50,40 @@ describe("parseAnnotateArgs", () => {
   test("path with spaces rejoins with single space", () => {
     expect(parseAnnotateArgs("my file.md --gate")).toEqual({
       filePath: "my file.md",
+      rawFilePath: "my file.md",
       gate: true,
       json: false,
     });
   });
 
   // `@` is the reference-mode marker (Claude Code / OpenCode / Pi convention),
-  // not part of the filename. The parser strips it as the primary behavior —
-  // that's the common case. Scoped-package-style literal `@` paths are handled
-  // by a fallback deeper in the resolution stack (see at-reference.ts).
+  // not part of the filename. The parser strips it on `filePath` as the primary
+  // behavior — that's the common case. `rawFilePath` preserves the original
+  // for callers that want to try the literal form as a fallback (scoped-package-
+  // style names). See at-reference.ts for the combined helper.
 
-  test("leading @ is stripped (reference-mode primary)", () => {
+  test("leading @ is stripped (reference-mode primary) and rawFilePath preserves it", () => {
     expect(parseAnnotateArgs("@spec.md --gate")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "@spec.md",
       gate: true,
       json: false,
     });
   });
 
-  test("scoped-package-style path has @ stripped (falls back to literal elsewhere)", () => {
+  test("scoped-package-style path: filePath stripped, rawFilePath literal", () => {
     expect(parseAnnotateArgs("@plannotator/ui/README.md")).toEqual({
       filePath: "plannotator/ui/README.md",
+      rawFilePath: "@plannotator/ui/README.md",
       gate: false,
       json: false,
     });
   });
 
-  test("@ stripped when combined with --gate --json", () => {
+  test("@ stripped on filePath when combined with --gate --json, raw preserved", () => {
     expect(parseAnnotateArgs("@docs/spec.md --gate --json")).toEqual({
       filePath: "docs/spec.md",
+      rawFilePath: "@docs/spec.md",
       gate: true,
       json: true,
     });
@@ -82,6 +92,7 @@ describe("parseAnnotateArgs", () => {
   test("URL passes through", () => {
     expect(parseAnnotateArgs("https://example.com/docs --gate")).toEqual({
       filePath: "https://example.com/docs",
+      rawFilePath: "https://example.com/docs",
       gate: true,
       json: false,
     });
@@ -90,6 +101,7 @@ describe("parseAnnotateArgs", () => {
   test("extra whitespace is collapsed", () => {
     expect(parseAnnotateArgs("  spec.md   --gate  ")).toEqual({
       filePath: "spec.md",
+      rawFilePath: "spec.md",
       gate: true,
       json: false,
     });
@@ -98,6 +110,7 @@ describe("parseAnnotateArgs", () => {
   test("empty string produces empty result", () => {
     expect(parseAnnotateArgs("")).toEqual({
       filePath: "",
+      rawFilePath: "",
       gate: false,
       json: false,
     });
@@ -106,6 +119,7 @@ describe("parseAnnotateArgs", () => {
   test("nullish input is tolerated", () => {
     expect(parseAnnotateArgs(undefined as unknown as string)).toEqual({
       filePath: "",
+      rawFilePath: "",
       gate: false,
       json: false,
     });
@@ -114,6 +128,7 @@ describe("parseAnnotateArgs", () => {
   test("folder path with trailing slash", () => {
     expect(parseAnnotateArgs("./specs/ --gate --json")).toEqual({
       filePath: "./specs/",
+      rawFilePath: "./specs/",
       gate: true,
       json: true,
     });
@@ -128,6 +143,7 @@ describe("parseAnnotateArgs", () => {
   test("double-space inside a file path is preserved (flag at end)", () => {
     expect(parseAnnotateArgs("My  Notes.md --gate")).toEqual({
       filePath: "My  Notes.md",
+      rawFilePath: "My  Notes.md",
       gate: true,
       json: false,
     });
@@ -136,6 +152,7 @@ describe("parseAnnotateArgs", () => {
   test("double-space inside a file path is preserved (flag at start)", () => {
     expect(parseAnnotateArgs("--gate My  Notes.md")).toEqual({
       filePath: "My  Notes.md",
+      rawFilePath: "My  Notes.md",
       gate: true,
       json: false,
     });
@@ -144,6 +161,7 @@ describe("parseAnnotateArgs", () => {
   test("tab inside a file path is preserved", () => {
     expect(parseAnnotateArgs("My\tNotes.md --gate")).toEqual({
       filePath: "My\tNotes.md",
+      rawFilePath: "My\tNotes.md",
       gate: true,
       json: false,
     });
@@ -152,6 +170,7 @@ describe("parseAnnotateArgs", () => {
   test("multi-whitespace path with no flags passes through untouched", () => {
     expect(parseAnnotateArgs("/tmp/My  Notes.md")).toEqual({
       filePath: "/tmp/My  Notes.md",
+      rawFilePath: "/tmp/My  Notes.md",
       gate: false,
       json: false,
     });
