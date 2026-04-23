@@ -128,11 +128,11 @@ Switches stdout to a structured decision object so hooks can route programmatica
 | Flags | UX | Approve | Close | Send Annotations |
 |---|---|---|---|---|
 | *(none)* | 2-button | n/a | empty | feedback (plaintext) |
-| `--gate` | 3-button | empty | empty | feedback (plaintext) |
+| `--gate` | 3-button | `The user approved.` | empty | feedback (plaintext) |
 | `--json` | 2-button | n/a | `{"decision":"dismissed"}` | `{"decision":"annotated","feedback":"..."}` |
 | `--gate --json` | 3-button | `{"decision":"approved"}` | `{"decision":"dismissed"}` | `{"decision":"annotated","feedback":"..."}` |
 
-**Key property:** in `--gate` mode without `--json`, Approve and Close both emit empty stdout, so naive PostToolUse / Stop hooks (empty = allow, non-empty = block) work with no parsing. Only Send Annotations blocks. Add `--json` when you need explicit approved-vs-dismissed telemetry.
+**Key property:** `--gate` plaintext output is unambiguous across all three decisions. Close is empty, Send Annotations is feedback markdown, Approve is the exact line `The user approved.` — each case distinguishable without JSON parsing. Use `--json` when you want machine-readable decision objects instead of string matching.
 
 On OpenCode and Pi, `--json` is silently accepted because those harnesses write back into the session directly rather than via stdout. The `--gate` flag behaves identically across all three harnesses.
 

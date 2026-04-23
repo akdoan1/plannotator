@@ -11,7 +11,7 @@ The `--gate` and `--json` flags on `plannotator annotate` and `plannotator annot
 See [Annotate → Flags](/docs/commands/annotate/#flags) for the full stdout matrix. The short version:
 
 - `--gate` adds a three-button UX (Approve / Send Annotations / Close).
-- Without `--json`: Approve and Close emit empty stdout; Send Annotations emits the feedback markdown. Matches Claude Code's natural PostToolUse / Stop hook convention (empty = allow, non-empty = block).
+- Without `--json`: Approve emits the line `The user approved.`, Close emits empty stdout, Send Annotations emits the feedback markdown. Three distinguishable outputs without parsing JSON.
 - With `--json`: every decision emits a structured `{ "decision": "approved" | "annotated" | "dismissed", "feedback": "..." }` object.
 
 ## Recipe 1: PostToolUse spec gate
@@ -43,11 +43,11 @@ Add to `.claude/hooks.json`:
 
 Behavior:
 
-- **Approve** → empty stdout → Claude Code proceeds as normal.
-- **Send Annotations** → feedback on stdout → Claude Code blocks the turn with the feedback as the reason.
-- **Close** → empty stdout → Claude Code proceeds.
+- **Approve** → `The user approved.` on stdout. Claude Code reports the line back and proceeds.
+- **Send Annotations** → feedback markdown on stdout. Claude Code reports the feedback back.
+- **Close** → empty stdout. Claude Code proceeds silently.
 
-No parsing needed. Approve and Close are equivalent from the agent's perspective; the human distinction is preserved in the UI.
+If your hook treats any non-empty stdout as a block signal (some scripts do), filter the approve marker explicitly, or use the `--json` recipe below to route on the parsed decision instead.
 
 ### Structured (`--json`)
 
@@ -100,7 +100,7 @@ Wire `annotate-last` to Claude Code's Stop hook to pause every agent turn for hu
 
 Behavior:
 
-- **Approve** → empty stdout → the turn ends normally, control returns to the user.
+- **Approve** → `The user approved.` on stdout. Turn ends; Claude Code reports the marker.
 - **Send Annotations** → feedback on stdout → Claude Code re-prompts with the feedback.
 - **Close** → empty stdout → turn ends.
 

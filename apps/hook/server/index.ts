@@ -135,9 +135,14 @@ const jsonFlag = jsonIdx !== -1;
 if (jsonFlag) args.splice(jsonIdx, 1);
 
 // Stdout matrix for annotate / annotate-last / copilot annotate-last (#570).
-// Approve and Close both emit empty stdout in plaintext mode so naive PostToolUse
-// and Stop hooks (empty = allow, non-empty = block) work without parsing.
+// Plaintext mode:
+//   - Close emits empty stdout (naive PostToolUse / Stop hooks: empty = allow).
+//   - Approve emits "The user approved." so agents and templates can
+//     distinguish approval from close without needing --json.
+//   - Send Annotations emits the plaintext feedback markdown.
 // --json switches to structured output across all three decisions.
+export const APPROVED_PLAINTEXT_MARKER = "The user approved.";
+
 function emitAnnotateOutcome(result: {
   feedback: string;
   exit?: boolean;
@@ -153,7 +158,11 @@ function emitAnnotateOutcome(result: {
     }
     return;
   }
-  if (result.approved || result.exit) return; // empty stdout
+  if (result.exit) return; // empty stdout on close
+  if (result.approved) {
+    console.log(APPROVED_PLAINTEXT_MARKER);
+    return;
+  }
   if (result.feedback) console.log(result.feedback);
 }
 

@@ -21,7 +21,7 @@ section: "Guides"
      Flags      │        UX        │         Approve         │          Close           │                 Annotate
 ─────────────── ┼──────────────────┼─────────────────────────┼──────────────────────────┼───────────────────────────────────────────────
  (none)         │  2-button        │  n/a                    │  empty                   │  feedback (plaintext)
- --gate         │  3-button        │  empty                  │  empty                   │  feedback (plaintext)
+ --gate         │  3-button        │  `The user approved.`   │  empty                   │  feedback (plaintext)
  --json         │  2-button        │  n/a                    │  {"decision":"dismissed"}│  {"decision":"annotated","feedback":"..."}
  --gate --json  │  3-button        │  {"decision":"approved"}│  {"decision":"dismissed"}│  {"decision":"annotated","feedback":"..."}
 ```
@@ -68,7 +68,7 @@ A three-way review decision. The annotation UI adds an Approve button alongside 
 - **Send Annotations.** The reviewer has specific changes. The feedback is returned verbatim.
 - **Close.** The session ends without a decision. Neither a signal to the agent nor an instruction set.
 
-In plaintext mode, Approve and Close are indistinguishable on stdout. Both emit nothing. That is intentional: it matches Claude Code's native PostToolUse convention where empty stdout means "allow" and non-empty stdout means "block with this as the reason." Naive hooks work out of the box. No parsing, no JSON, no logic.
+In plaintext mode, Approve emits the single line `The user approved.` on stdout so templates and agents can distinguish approval from close without needing `--json`. Close emits nothing. Send Annotations emits the feedback markdown. Hook authors who treat any non-empty stdout as a block signal need to filter the approve marker (or use `--json` for cleaner routing).
 
 ## `--json`
 
